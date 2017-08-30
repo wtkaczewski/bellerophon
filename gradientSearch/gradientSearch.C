@@ -34,7 +34,9 @@ neighbour_(mesh.neighbour()),
 neighbourFaceCells_(0),
 visited_(labelList(10,-1)),
 cellTreePtrs_(List< autoPtr<indexedOctree<treeDataCell> > >(mesh_.cellZones().size()+1)),
-zoneBoundPtrs_(List< autoPtr<boundBox> >(mesh_.cellZones().size()+1))
+zoneBoundPtrs_(List< autoPtr<boundBox> >(mesh_.cellZones().size()+1)),
+ignoreMultiple_(false),
+skipGradientSearch_(false)
 {
     if(Pstream::parRun())
     {
@@ -98,7 +100,7 @@ Foam::label Foam::gradientSearch::searchLocal
 //     bool log = false;
 //     autoPtr<std::ofstream> osPtr;
 //     const vectorField& ccs = mesh_.cellCentres();
-// 
+//
 //     if(item.procID()==1 && item.cellLabel()==22414)
 //     {
 //         log = true;
@@ -114,6 +116,12 @@ Foam::label Foam::gradientSearch::searchLocal
 //     }
 
     const Foam::point& curPoint(item.position());
+
+    if(debug>1)
+    {
+        Pout<<"Local gradient search for point at "<<curPoint<<endl;
+    }
+
     // Get seed cell
     label& seedCell = item.seed();
 
@@ -348,16 +356,18 @@ Foam::label Foam::gradientSearch::searchLocal
             // Maybe one wants to insert zoneChecking here, if dealing with special
             // cases like periodic overset grids or other stuff without clearly
             // separated cell zones
+            if(debug>1) Pout << "    Found within own domain"<<endl;
             return Pstream::myProcNo();
         }
         if( !found && (procHit > -1) )
         {
+            if(debug>1) Pout << "    Hit proc "<<neighbProcNo<<endl;
             seedCell = procHit;
             return neighbProcNo;
         }
-        // ELSE RETURN -1 (see below)
     }
 
+    if(debug>1) Pout << "    failed"<<endl;
     return -1;
 }
 
@@ -475,7 +485,7 @@ void Foam::gradientSearch::search
     // 3. Perform octree search with these items
     // 4. Check which items were found
     // 5. Send still failed items back to their proc
- 
+
     const label nLocalItems = searchableItemsPtr().size();
     label nGlobalItems = nLocalItems;
 
@@ -561,6 +571,14 @@ void Foam::gradientSearch::search
     // Linked list of failed items (buffer)
     SLList< searchItem > failedItemsBuffer;
 
+    if(skipGradientSearch_)
+    {
+        forAll(searchableItems, itemI)
+        {
+            failedItemsBuffer.append(searchableItems[itemI]);
+        }
+        searchableItems.setSize(0);
+    }
 
     bool anyProcHit = false;
 
@@ -607,7 +625,7 @@ void Foam::gradientSearch::search
             }
             procNo = searchLocal(searchableItems[itemI], hitFromProc[itemI]);
 
-            // Count the diffrent results
+            // Count the different results
             if(procNo == myProcNo)
             {
                 nLocalItems++;
@@ -653,10 +671,12 @@ void Foam::gradientSearch::search
             {
                 // Copy local item to local item list
                 const searchItem& curItem = searchableItems[itemI];
+
                 localItems[nLocalItems] = curItem;
                 nLocalItems++;
                 label& success =
                     finallyFoundPerProc[curItem.groupID()][curItem.groupIndex()];
+
                 if(success == 0)
                 {
                     success = 1;
@@ -1302,7 +1322,7 @@ void Foam::gradientSearch::collectGlobalSuccess
                     received[itemI] == 1
                 )
                 {
-                    if(finallyFound[itemI] > 0)
+                    if(finallyFound[itemI] > 0 && !ignoreMultiple_)
                     {
                         FatalErrorIn
                         (
@@ -1313,7 +1333,7 @@ void Foam::gradientSearch::collectGlobalSuccess
                         )
                         << "Multiple results for item " << itemI << " proc "
                         << procI << "." << nl
-                        << "Received: "<< received[itemI] << ", stored"
+                        << "Received: "<< received[itemI] << ", stored "
                         << finallyFound[itemI]
                         << exit(FatalError);
                     }
@@ -1439,7 +1459,7 @@ const Foam::boundBox& Foam::gradientSearch::zoneBounds(const label zoneID) const
             "const Foam::boundBox& "
             "Foam::gradientSearch::zoneBounds(const label zoneID) const"
         )
-        << "Requested bounding box for zone with index with " << idx 
+        << "Requested bounding box for zone with index with " << idx
         << ", but only " << zoneBoundPtrs_.size() << " boxes defined."
         << exit(FatalError);
     }

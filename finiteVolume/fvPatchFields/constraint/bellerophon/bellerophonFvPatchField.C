@@ -379,6 +379,38 @@ void bellerophonFvPatchField<Type>::initEvaluate(const Pstream::commsTypes comms
 //             newLiveSet.write();
         }
     }
+    else if (iFieldName() == "yWall" && interface().holeInterface() >= 0)
+    {
+        Info << "clipping yWall within hole"<<endl;
+        // Small
+        const Type& small = pTraits<Type>::one * 1e-15;
+
+        // Index of the hole interface
+        const label holeIndex = interface().holeInterface();
+
+        // Faces between live cells and acceptor cells of the interface
+        const labelList& holeFaces =
+            bellerophon::Interpolation().interfaceFaces(holeIndex);
+
+        // Flip map of the interface faces of the hole
+        const boolList& holeFlipMap =
+            bellerophon::Interpolation().interfaceFlipMap(holeIndex);
+
+        // Access to the values in the field
+        Field<Type>& iField = const_cast<Field<Type>&>(this->primitiveField());
+
+        // Access to owners and neighbours
+        const fvMesh& mesh = this->patch().boundaryMesh().mesh();
+        const labelList& own = mesh.owner();
+        const labelList& nei = mesh.neighbour();
+
+        forAll(holeFaces, faceI)
+        {
+            const label f = holeFaces[faceI];
+            const label c = holeFlipMap[faceI] ? nei[f] : own[f];
+            iField[c] = small;
+        }
+    }
     else if(debug)
     {
         Info<<"Not forcing zero for field "<<iFieldName()<<endl;

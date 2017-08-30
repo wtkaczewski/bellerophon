@@ -194,7 +194,7 @@ Foam::autoPtr<Foam::labelList>
 Foam::solidOversetMotionFvMesh::createHoleMap() const
 {
     // Triangular surface search
-    triSurfaceSearch searchEngine(holeBoundaryPtr_());
+    triSurfaceSearch searchEngine(holeBoundaryPtr_(), 1e-08, 10);
 
     // Is the cell inside the hole surface
     const boolList inHole( searchEngine.calcInside( this->cellCentres() ) );
@@ -950,14 +950,14 @@ bool Foam::solidOversetMotionFvMesh::writeLiveCells(const word& timeName) const
 }
 
 
-bool Foam::solidOversetMotionFvMesh::writeObjects
+bool Foam::solidOversetMotionFvMesh::writeObject
 (
     Foam::IOstream::streamFormat fmt,
  Foam::IOstream::versionNumber ver,
  Foam::IOstream::compressionType cmp
 ) const
 {
-    return writeLiveCells(this->time().timeName()) && fvMesh::writeObjects(fmt, ver, cmp);
+    return writeLiveCells(this->time().timeName()) && fvMesh::writeObject(fmt, ver, cmp);
 }
 
 // ************************************************************************* //
